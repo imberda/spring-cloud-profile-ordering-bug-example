@@ -1,0 +1,62 @@
+= What is this project?
+
+This is a simple example project to demonstrate an interesting issue that arises when using Spring Cloud Config Server and its "native" (file-backed) repository.
+
+The issue relates to the ordering of the returned property sources. Specifically we always expect profile specific property sources (i.e. `service1.properties` and `servcie1-profile1.properties`)to appear before (i.e. have higher precedence) as compared to generic property sources (i.e. `application.properties` and `application-profile1`).
+
+For example suppose you have the following configuration files within the `spring.cloud.config.server.native.search-locations` directory:
+
+* application.properties
+* application-dev1.properties
+* service1-dev1.properties
+* service1-dev2.properties
+
+Then if you start the Spring Cloud Config Server with the `native` profile enabled and issue the following command:
+
+[source]
+----
+curl http://localhost:8080/service1/dev1,dev2|jq .propertySources[].name
+----
+
+You should (and do) get the following results:
+
+[source,]
+----
+"file:config-files/service1-dev2.properties"
+"file:config-files/service1-dev1.properties"
+"file:config-files/application-dev1.properties"
+"file:config-files/application.properties"
+----
+
+However if you start the config server and set environment variable `spring_profiles_active` to include a profile also included in the `curl` request:
+
+[source,]
+----
+spring_profiles_active=dev1 mvn spring-boot:run
+----
+
+When you issue the curl request above you actually get the following results:
+
+[source,]
+----
+"file:config-files/service1-dev2.properties"
+"file:config-files/application-dev1.properties"
+"file:config-files/service1-dev1.properties"
+"file:config-files/application.properties"
+----
+
+Notice that `application-dev1.properties` appears before `service1-dev1.properties`.
+
+Interestingly the issue only seems to occur when the environment variable `spring_profiles_active` is set with a profile which overlaps with a profile supplied on a REST request. 
+
+Moreover the issue does NOT occur if the environment variable is set using uppercase (i.e. SPRING_PROFILES_ACTIVE) or as a system property (i.e. `-Dspring.profiles.active=dev1`). So either of the following server start commands will NOT have the same problem:
+
+[source,]
+----
+SPRING_PROFILES_ACTIVE=dev1 mvn spring-boot:run
+----
+
+[source,]
+----
+mvn spring-boot:run -Dspring.profiles.active=dev1
+----
